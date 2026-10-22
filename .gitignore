@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE
+.vscode/
+
+# Environment variables
+.env
+
+# Generated test image
+test_image.png
+
+# Personal dataset and generated results
+data/
+results/
