@@ -24,5 +24,25 @@ else:
     # 2. Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
+    # 3. Reduce noise with Gaussian Blur
+    blurred = cv2.GaussianBlur(
+        gray, (5, 5), 0
+    )
+
+    # Resize processed images for display
+    display_gray = cv2.resize(
+        gray, (new_width, new_height)
+    )
+
+    display_blurred = cv2.resize(
+        blurred, (new_width, new_height)
+    )
+
+    # 4. Show results
+    cv2.imshow("1 - Original", display_original)
+    cv2.imshow("2 - Grayscale", display_gray)
+    cv2.imshow("3 - Gaussian Blur", display_blurred)
+
+    print("Press any key to close the windows.")
     cv2.waitKey(0)
     cv2.destroyAllWindows()
