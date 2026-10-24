@@ -62,6 +62,11 @@ else:
         adaptive, (new_width, new_height)
     )
 
+    cv2.imwrite("images/gray.png", gray)
+    cv2.imwrite("images/blurred.png", blurred)
+    cv2.imwrite("images/otsu.png", otsu)
+    cv2.imwrite("images/adaptive.png", adaptive)
+    
     # Display results
     cv2.imshow("Original", original_display)
     cv2.imshow("Grayscale", gray_display)
