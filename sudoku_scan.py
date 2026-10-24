@@ -7,7 +7,7 @@ if image is None:
     print("Image could not be loaded.")
 
 else:
-    # 1. Resize only for display
+    # Resize settings (display only)
     max_width = 800
     max_height = 600
 
@@ -17,31 +17,44 @@ else:
     new_width = int(width * scale)
     new_height = int(height * scale)
 
-    display_original = cv2.resize(
-        image, (new_width, new_height)
+    # 1. Grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # 2. Gaussian Blur
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+    # 3. Otsu Thresholding
+    _, otsu = cv2.threshold(
+        blurred,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
     # 2. Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # 3. Reduce noise with Gaussian Blur
-    blurred = cv2.GaussianBlur(
-        gray, (5, 5), 0
+    # Resize images for display
+    original_display = cv2.resize(
+        image, (new_width, new_height)
     )
 
-    # Resize processed images for display
-    display_gray = cv2.resize(
+    gray_display = cv2.resize(
         gray, (new_width, new_height)
     )
 
-    display_blurred = cv2.resize(
+    blurred_display = cv2.resize(
         blurred, (new_width, new_height)
     )
 
-    # 4. Show results
-    cv2.imshow("1 - Original", display_original)
-    cv2.imshow("2 - Grayscale", display_gray)
-    cv2.imshow("3 - Gaussian Blur", display_blurred)
+    otsu_display = cv2.resize(
+        otsu, (new_width, new_height)
+    )
+
+    # Display results
+    cv2.imshow("Original", original_display)
+    cv2.imshow("Grayscale", gray_display)
+    cv2.imshow("Gaussian Blur", blurred_display)
 
     print("Press any key to close the windows.")
     cv2.waitKey(0)
