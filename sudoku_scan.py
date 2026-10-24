@@ -33,13 +33,13 @@ else:
 
     # 4. Adaptive Thresholding
     adaptive = cv2.adaptiveThreshold(
-        blurred,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        11,
-        2
-    )
+    blurred,
+    255,
+    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+    cv2.THRESH_BINARY,
+    21,  # blockSize
+    5    # C
+)
 
     # Resize images for display
     original_display = cv2.resize(
