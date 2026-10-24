@@ -31,8 +31,15 @@ else:
         cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
-    # 2. Convert to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # 4. Adaptive Thresholding
+    adaptive = cv2.adaptiveThreshold(
+        blurred,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        11,
+        2
+    )
 
     # Resize images for display
     original_display = cv2.resize(
@@ -51,11 +58,17 @@ else:
         otsu, (new_width, new_height)
     )
 
+    adaptive_display = cv2.resize(
+        adaptive, (new_width, new_height)
+    )
+
     # Display results
     cv2.imshow("Original", original_display)
     cv2.imshow("Grayscale", gray_display)
     cv2.imshow("Gaussian Blur", blurred_display)
+    cv2.imshow("Otsu Threshold", otsu_display)
+    cv2.imshow("Adaptive Threshold", adaptive_display)
 
-    print("Press any key to close the windows.")
+    print("Press any key to close.")
     cv2.waitKey(0)
     cv2.destroyAllWindows()
