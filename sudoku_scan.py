@@ -33,15 +33,37 @@ else:
 
     # 4. Adaptive Thresholding
     adaptive = cv2.adaptiveThreshold(
-    blurred,
-    255,
-    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-    cv2.THRESH_BINARY,
-    21,  # blockSize
-    5    # C
-)
+        blurred,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        21,
+        5
+    )
 
-    # Resize images for display
+    # 5. Invert image
+    inverted = cv2.bitwise_not(otsu)
+
+    # 6. Create horizontal and vertical kernels
+    horizontal_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT, (max(10, width // 30), 1)
+    )
+
+    vertical_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT, (1, max(10, height // 30))
+    )
+
+    # 7. Detect horizontal lines
+    horizontal_lines = cv2.morphologyEx(
+        inverted, cv2.MORPH_OPEN, horizontal_kernel
+    )
+
+    # 8. Detect vertical lines
+    vertical_lines = cv2.morphologyEx(
+        inverted, cv2.MORPH_OPEN, vertical_kernel
+    )
+
+    # 9. Resize images for display
     original_display = cv2.resize(
         image, (new_width, new_height)
     )
@@ -62,17 +84,30 @@ else:
         adaptive, (new_width, new_height)
     )
 
+    horizontal_display = cv2.resize(
+        horizontal_lines, (new_width, new_height)
+    )
+
+    vertical_display = cv2.resize(
+        vertical_lines, (new_width, new_height)
+    )
+
+    # 10. Save processed images
     cv2.imwrite("images/gray.png", gray)
     cv2.imwrite("images/blurred.png", blurred)
     cv2.imwrite("images/otsu.png", otsu)
     cv2.imwrite("images/adaptive.png", adaptive)
-    
-    # Display results
+    cv2.imwrite("images/horizontal_lines.png", horizontal_lines)
+    cv2.imwrite("images/vertical_lines.png", vertical_lines)
+
+    # 11. Display results
     cv2.imshow("Original", original_display)
     cv2.imshow("Grayscale", gray_display)
     cv2.imshow("Gaussian Blur", blurred_display)
     cv2.imshow("Otsu Threshold", otsu_display)
     cv2.imshow("Adaptive Threshold", adaptive_display)
+    cv2.imshow("Horizontal Lines", horizontal_display)
+    cv2.imshow("Vertical Lines", vertical_display)
 
     print("Press any key to close.")
     cv2.waitKey(0)
