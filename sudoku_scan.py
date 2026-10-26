@@ -46,11 +46,11 @@ else:
 
     # 6. Create horizontal and vertical kernels
     horizontal_kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT, (max(10, width // 30), 1)
+    cv2.MORPH_RECT, (max(10, width // 40), 1)
     )
 
     vertical_kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT, (1, max(10, height // 30))
+    cv2.MORPH_RECT, (1, max(10, height // 40))
     )
 
     # 7. Detect horizontal lines
