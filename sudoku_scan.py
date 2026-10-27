@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-image = cv2.imread("images/sudoku_01.jpg")
+image = cv2.imread("input/sudoku_01.jpg")
 
 if image is None:
     print("Image could not be loaded.")
@@ -142,15 +142,21 @@ else:
     )
 
     # 12. Save processed images
-    cv2.imwrite("images/gray.png", gray)
-    cv2.imwrite("images/blurred.png", blurred)
-    cv2.imwrite("images/otsu.png", otsu)
-    cv2.imwrite("images/adaptive.png", adaptive)
-    cv2.imwrite("images/horizontal_lines.png", horizontal_lines)
-    cv2.imwrite("images/vertical_lines.png", vertical_lines)
-    cv2.imwrite("images/combined_grid.png", grid_image)
-    cv2.imwrite("images/harris_corners.png", harris_result)
+    
+    # Save preprocessing results
+    cv2.imwrite("output/preprocessing/gray.png", gray)
+    cv2.imwrite("output/preprocessing/blurred.png", blurred)
+    cv2.imwrite("output/preprocessing/otsu.png", otsu)
+    cv2.imwrite("output/preprocessing/adaptive.png", adaptive)
 
+    # Save line detection results
+    cv2.imwrite("output/lines/horizontal_lines.png", horizontal_lines)
+    cv2.imwrite("output/lines/vertical_lines.png", vertical_lines)
+    cv2.imwrite("output/lines/combined_grid.png", grid_image)
+
+    # Save Harris results
+    cv2.imwrite("output/corners/harris_corners.png", harris_result)
+    
     # 13. Display results
     cv2.imshow("Original", original_display)
     cv2.imshow("Grayscale", gray_display)
