@@ -89,7 +89,7 @@ else:
     )
 
     # Mark Harris corner candidates in red
-    threshold = 0.01 * harris.max()
+    threshold = 0.03 * harris.max()
 
     harris_result[harris > threshold] = [0, 0, 255]
     
