@@ -63,7 +63,13 @@ else:
         inverted, cv2.MORPH_OPEN, vertical_kernel
     )
 
-    # 9. Resize images for display
+    # 9. Combine horizontal and vertical lines
+    grid_image = cv2.add(
+    horizontal_lines,
+    vertical_lines
+    )
+
+    # 10. Resize images for display
     original_display = cv2.resize(
         image, (new_width, new_height)
     )
@@ -92,15 +98,20 @@ else:
         vertical_lines, (new_width, new_height)
     )
 
-    # 10. Save processed images
+    grid_display = cv2.resize(
+    grid_image, (new_width, new_height)
+    )
+
+    # 11. Save processed images
     cv2.imwrite("images/gray.png", gray)
     cv2.imwrite("images/blurred.png", blurred)
     cv2.imwrite("images/otsu.png", otsu)
     cv2.imwrite("images/adaptive.png", adaptive)
     cv2.imwrite("images/horizontal_lines.png", horizontal_lines)
     cv2.imwrite("images/vertical_lines.png", vertical_lines)
+    cv2.imwrite("images/combined_grid.png", grid_image)
 
-    # 11. Display results
+    # 12. Display results
     cv2.imshow("Original", original_display)
     cv2.imshow("Grayscale", gray_display)
     cv2.imshow("Gaussian Blur", blurred_display)
@@ -108,6 +119,7 @@ else:
     cv2.imshow("Adaptive Threshold", adaptive_display)
     cv2.imshow("Horizontal Lines", horizontal_display)
     cv2.imshow("Vertical Lines", vertical_display)
+    cv2.imshow("Combined Sudoku Grid", grid_display)
 
     print("Press any key to close.")
     cv2.waitKey(0)
