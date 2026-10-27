@@ -83,14 +83,16 @@ else:
     # Dilate Harris response for better visualization
     harris = cv2.dilate(harris, None)
 
-    # Create a copy of original image
-    harris_result = image.copy()
+   # Create a copy of grayscale image
+    harris_result = cv2.cvtColor(
+    gray, cv2.COLOR_GRAY2BGR
+    )
 
     # Mark Harris corner candidates in red
     threshold = 0.01 * harris.max()
 
     harris_result[harris > threshold] = [0, 0, 255]
-
+    
     # 11. Resize images for display
     original_display = cv2.resize(
         image, (new_width, new_height)
