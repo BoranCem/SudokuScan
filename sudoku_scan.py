@@ -75,7 +75,7 @@ else:
 
     harris = cv2.cornerHarris(
         gray_float,
-        blockSize=2,
+        blockSize=3,
         ksize=3,
         k=0.04
     )
@@ -89,7 +89,7 @@ else:
     )
 
     # Mark Harris corner candidates in red
-    threshold = 0.03 * harris.max()
+    threshold = 0.035 * harris.max()
 
     # Find corner candidate coordinates
     corner_points = np.argwhere(harris > threshold)

@@ -14,7 +14,3 @@ venv/
 
 # Generated test image
 test_image.png
-
-# Personal dataset and generated results
-data/
-results/
