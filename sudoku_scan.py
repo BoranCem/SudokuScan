@@ -91,8 +91,19 @@ else:
     # Mark Harris corner candidates in red
     threshold = 0.03 * harris.max()
 
-    harris_result[harris > threshold] = [0, 0, 255]
-    
+    # Find corner candidate coordinates
+    corner_points = np.argwhere(harris > threshold)
+
+    # Draw larger red circles
+    for y, x in corner_points:
+        cv2.circle(
+            harris_result,
+            (x, y),
+            6,              # Circle radius
+            (0, 0, 255),    # Red color
+            -1              # Filled circle
+        )
+
     # 11. Resize images for display
     original_display = cv2.resize(
         image, (new_width, new_height)
