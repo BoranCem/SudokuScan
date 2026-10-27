@@ -1,5 +1,5 @@
-
 import cv2
+import numpy as np
 
 image = cv2.imread("images/sudoku_01.jpg")
 
@@ -69,7 +69,29 @@ else:
     vertical_lines
     )
 
-    # 10. Resize images for display
+    # 10. Harris Corner Detection
+
+    gray_float = gray.astype(np.float32)
+
+    harris = cv2.cornerHarris(
+        gray_float,
+        blockSize=2,
+        ksize=3,
+        k=0.04
+    )
+
+    # Dilate Harris response for better visualization
+    harris = cv2.dilate(harris, None)
+
+    # Create a copy of original image
+    harris_result = image.copy()
+
+    # Mark Harris corner candidates in red
+    threshold = 0.01 * harris.max()
+
+    harris_result[harris > threshold] = [0, 0, 255]
+
+    # 11. Resize images for display
     original_display = cv2.resize(
         image, (new_width, new_height)
     )
@@ -102,7 +124,11 @@ else:
     grid_image, (new_width, new_height)
     )
 
-    # 11. Save processed images
+    harris_display = cv2.resize(
+        harris_result, (new_width, new_height)
+    )
+
+    # 12. Save processed images
     cv2.imwrite("images/gray.png", gray)
     cv2.imwrite("images/blurred.png", blurred)
     cv2.imwrite("images/otsu.png", otsu)
@@ -110,8 +136,9 @@ else:
     cv2.imwrite("images/horizontal_lines.png", horizontal_lines)
     cv2.imwrite("images/vertical_lines.png", vertical_lines)
     cv2.imwrite("images/combined_grid.png", grid_image)
+    cv2.imwrite("images/harris_corners.png", harris_result)
 
-    # 12. Display results
+    # 13. Display results
     cv2.imshow("Original", original_display)
     cv2.imshow("Grayscale", gray_display)
     cv2.imshow("Gaussian Blur", blurred_display)
@@ -120,6 +147,7 @@ else:
     cv2.imshow("Horizontal Lines", horizontal_display)
     cv2.imshow("Vertical Lines", vertical_display)
     cv2.imshow("Combined Sudoku Grid", grid_display)
+    cv2.imshow("Harris Corners", harris_display)
 
     print("Press any key to close.")
     cv2.waitKey(0)
