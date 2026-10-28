@@ -1,12 +1,37 @@
 import cv2
 import numpy as np
+import os
 
-image = cv2.imread("input/sudoku_01.jpg")
+image_files = [
+    "sudoku_01.jpg",
+    "sudoku_02.jpg",
+    "sudoku_03.jpg",
+    "sudoku_04.jpg",
+    "sudoku_05.jpg"
+]
 
-if image is None:
-    print("Image could not be loaded.")
+for image_name in image_files:
 
-else:
+    image_path = "input/" + image_name
+    image = cv2.imread(image_path)
+
+    if image is None:
+        print(f"Image could not be loaded: {image_name}")
+        continue
+
+    print(f"Processing: {image_name}")
+
+    image_output_name = os.path.splitext(image_name)[0]
+
+    preprocessing_dir = f"output/{image_output_name}/preprocessing"
+    lines_dir = f"output/{image_output_name}/lines"
+    corners_dir = f"output/{image_output_name}/corners"
+
+    os.makedirs(preprocessing_dir, exist_ok=True)
+    os.makedirs(lines_dir, exist_ok=True)
+    os.makedirs(corners_dir, exist_ok=True)
+
+
     # Resize settings (display only)
     max_width = 800
     max_height = 600
@@ -89,7 +114,7 @@ else:
     # Dilate Harris response for better visualization
     harris = cv2.dilate(harris, None)
 
-   # Create a copy of grayscale image
+    # Create a copy of grayscale image
     harris_result = cv2.cvtColor(
     gray, cv2.COLOR_GRAY2BGR
     )
@@ -148,21 +173,21 @@ else:
     )
 
     # 12. Save processed images
-    
+
     # Save preprocessing results
-    cv2.imwrite("output/preprocessing/gray.png", gray)
-    cv2.imwrite("output/preprocessing/blurred.png", blurred)
-    cv2.imwrite("output/preprocessing/otsu.png", otsu)
-    cv2.imwrite("output/preprocessing/adaptive.png", adaptive)
+    cv2.imwrite(f"{preprocessing_dir}/gray.png", gray)
+    cv2.imwrite(f"{preprocessing_dir}/blurred.png", blurred)
+    cv2.imwrite(f"{preprocessing_dir}/otsu.png", otsu)
+    cv2.imwrite(f"{preprocessing_dir}/adaptive.png", adaptive)
 
     # Save line detection results
-    cv2.imwrite("output/lines/horizontal_lines.png", horizontal_lines)
-    cv2.imwrite("output/lines/vertical_lines.png", vertical_lines)
-    cv2.imwrite("output/lines/combined_grid.png", grid_image)
+    cv2.imwrite(f"{lines_dir}/horizontal_lines.png", horizontal_lines)
+    cv2.imwrite(f"{lines_dir}/vertical_lines.png", vertical_lines)
+    cv2.imwrite(f"{lines_dir}/combined_grid.png", grid_image)
 
     # Save Harris results
-    cv2.imwrite("output/corners/harris_corners.png", harris_result)
-    
+    cv2.imwrite(f"{corners_dir}/harris_corners.png", harris_result)
+
     # 13. Display results
     cv2.imshow("Original", original_display)
     cv2.imshow("Grayscale", gray_display)
