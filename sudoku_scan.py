@@ -71,13 +71,19 @@ else:
 
     # 10. Harris Corner Detection
 
+    # Harris parameters
+    harris_block_size = 3
+    harris_ksize = 3
+    harris_k = 0.04
+    harris_threshold = 0.035
+
     gray_float = gray.astype(np.float32)
 
     harris = cv2.cornerHarris(
         gray_float,
-        blockSize=3,
-        ksize=3,
-        k=0.04
+        blockSize=harris_block_size,
+        ksize=harris_ksize,
+        k=harris_k
     )
 
     # Dilate Harris response for better visualization
@@ -89,7 +95,7 @@ else:
     )
 
     # Mark Harris corner candidates in red
-    threshold = 0.035 * harris.max()
+    threshold = harris_threshold * harris.max()
 
     # Find corner candidate coordinates
     corner_points = np.argwhere(harris > threshold)
