@@ -127,13 +127,13 @@ for image_name in image_files:
     )
 
     # Draw larger red circles
-    for y, x in corner_points:
+    for x, y in corner_points:
         cv2.circle(
             harris_result,
             (x, y),
-            6,              # Circle radius
-            (0, 0, 255),    # Red color
-            -1              # Filled circle
+            6,
+            (0, 0, 255),
+            -1
         )
 
     # 11. Resize images for display
