@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+from corner_detector import CornerDetector
 
 image_files = [
     "sudoku_01.jpg",
@@ -104,6 +105,8 @@ for image_name in image_files:
 
     gray_float = gray.astype(np.float32)
 
+    corner_detector = CornerDetector()
+
     harris = cv2.cornerHarris(
         gray_float,
         blockSize=harris_block_size,
@@ -114,16 +117,14 @@ for image_name in image_files:
     # Dilate Harris response for better visualization
     harris = cv2.dilate(harris, None)
 
+    corner_points = corner_detector.detect_corners(harris)
+
+    print(f"Detected Harris candidates: {len(corner_points)}")
+
     # Create a copy of grayscale image
     harris_result = cv2.cvtColor(
     gray, cv2.COLOR_GRAY2BGR
     )
-
-    # Mark Harris corner candidates in red
-    threshold = harris_threshold * harris.max()
-
-    # Find corner candidate coordinates
-    corner_points = np.argwhere(harris > threshold)
 
     # Draw larger red circles
     for y, x in corner_points:
