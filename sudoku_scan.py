@@ -98,7 +98,7 @@ for image_name in image_files:
 
     # Harris parameters
     harris_block_size = 3
-    harris_ksize = 3
+    harris_ksize = 5
     harris_k = 0.04
     harris_threshold = 0.035
 
