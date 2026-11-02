@@ -66,8 +66,13 @@ for image_name in image_files:
         21, 5
     )
 
-    # 5. Invert image
-    inverted = cv2.bitwise_not(otsu)
+    # 5. Adaptive thresholding (inverted) -> used for line extraction
+    inverted = cv2.adaptiveThreshold(
+        blurred, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        21, 5
+    )
 
     # 6. Create horizontal and vertical kernels
     horizontal_kernel = cv2.getStructuringElement(
