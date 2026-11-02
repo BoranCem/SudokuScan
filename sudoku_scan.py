@@ -11,6 +11,18 @@ image_files = [
     "sudoku_05.jpg"
 ]
 
+# Resize settings (display only)
+MAX_WIDTH = 800
+MAX_HEIGHT = 600
+
+# Perspective warp output size
+WARP_SIZE = 450
+
+
+def resize_for_display(img, size):
+    return cv2.resize(img, size)
+
+
 for image_name in image_files:
 
     image_path = "input/" + image_name
@@ -28,43 +40,30 @@ for image_name in image_files:
     lines_dir = f"output/{image_output_name}/lines"
     corners_dir = f"output/{image_output_name}/corners"
 
-    os.makedirs(preprocessing_dir, exist_ok=True)
-    os.makedirs(lines_dir, exist_ok=True)
-    os.makedirs(corners_dir, exist_ok=True)
-
-
-    # Resize settings (display only)
-    max_width = 800
-    max_height = 600
+    for d in (preprocessing_dir, lines_dir, corners_dir, warp_dir):
+        os.makedirs(d, exist_ok=True)
 
     height, width = image.shape[:2]
-    scale = min(max_width / width, max_height / height, 1)
-
-    new_width = int(width * scale)
-    new_height = int(height * scale)
+    scale = min(MAX_WIDTH / width, MAX_HEIGHT / height, 1)
+    new_size = (int(width * scale), int(height * scale))
 
     # 1. Grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # 2. Gaussian Blur
+    # 2. Gaussian blur
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # 3. Otsu Thresholding
+    # 3. Otsu thresholding (kept for comparison)
     _, otsu = cv2.threshold(
-        blurred,
-        0,
-        255,
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
-    # 4. Adaptive Thresholding
+    # 4. Adaptive thresholding (normal)
     adaptive = cv2.adaptiveThreshold(
-        blurred,
-        255,
+        blurred, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY,
-        21,
-        5
+        21, 5
     )
 
     # 5. Invert image
