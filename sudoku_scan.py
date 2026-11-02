@@ -94,20 +94,7 @@ for image_name in image_files:
     )
 
     # 9. Combine horizontal and vertical lines
-    grid_image = cv2.add(
-    horizontal_lines,
-    vertical_lines
-    )
-
-    # 10. Harris Corner Detection
-
-    # Harris parameters
-    harris_block_size = 3
-    harris_ksize = 5
-    harris_k = 0.04
-    harris_threshold = 0.035
-
-    gray_float = gray.astype(np.float32)
+    grid_image = cv2.add(horizontal_lines, vertical_lines)
 
     corner_detector = CornerDetector()
 
