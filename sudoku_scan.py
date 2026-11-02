@@ -127,46 +127,7 @@ for image_name in image_files:
             -1
         )
 
-    # 11. Resize images for display
-    original_display = cv2.resize(
-        image, (new_width, new_height)
-    )
-
-    gray_display = cv2.resize(
-        gray, (new_width, new_height)
-    )
-
-    blurred_display = cv2.resize(
-        blurred, (new_width, new_height)
-    )
-
-    otsu_display = cv2.resize(
-        otsu, (new_width, new_height)
-    )
-
-    adaptive_display = cv2.resize(
-        adaptive, (new_width, new_height)
-    )
-
-    horizontal_display = cv2.resize(
-        horizontal_lines, (new_width, new_height)
-    )
-
-    vertical_display = cv2.resize(
-        vertical_lines, (new_width, new_height)
-    )
-
-    grid_display = cv2.resize(
-    grid_image, (new_width, new_height)
-    )
-
-    harris_display = cv2.resize(
-        harris_result, (new_width, new_height)
-    )
-
-    # 12. Save processed images
-
-    # Save preprocessing results
+    # 12. Save results
     cv2.imwrite(f"{preprocessing_dir}/gray.png", gray)
     cv2.imwrite(f"{preprocessing_dir}/blurred.png", blurred)
     cv2.imwrite(f"{preprocessing_dir}/otsu.png", otsu)
@@ -181,16 +142,14 @@ for image_name in image_files:
     cv2.imwrite(f"{corners_dir}/harris_corners.png", harris_result)
 
     # 13. Display results
-    cv2.imshow("Original", original_display)
-    cv2.imshow("Grayscale", gray_display)
-    cv2.imshow("Gaussian Blur", blurred_display)
-    cv2.imshow("Otsu Threshold", otsu_display)
-    cv2.imshow("Adaptive Threshold", adaptive_display)
-    cv2.imshow("Horizontal Lines", horizontal_display)
-    cv2.imshow("Vertical Lines", vertical_display)
-    cv2.imshow("Combined Sudoku Grid", grid_display)
-    cv2.imshow("Harris Corners", harris_display)
+    cv2.imshow("Original", resize_for_display(image, new_size))
+    cv2.imshow("Adaptive Threshold (inv)", resize_for_display(inverted, new_size))
+    cv2.imshow("Combined Sudoku Grid", resize_for_display(grid_image, new_size))
+    cv2.imshow("Grid Corners", resize_for_display(corners_result, new_size))
+    cv2.imshow("Harris Corners", resize_for_display(harris_result, new_size))
+    if warped is not None:
+        cv2.imshow("Warped", warped)
 
-    print("Press any key to close.")
+    print("Press any key to continue.")
     cv2.waitKey(0)
     cv2.destroyAllWindows()
