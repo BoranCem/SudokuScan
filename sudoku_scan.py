@@ -73,7 +73,6 @@ for image_name in image_files:
     horizontal_kernel = cv2.getStructuringElement(
         cv2.MORPH_RECT, (max(10, width // 40), 1)
     )
-
     vertical_kernel = cv2.getStructuringElement(
         cv2.MORPH_RECT, (1, max(10, height // 40))
     )
@@ -91,10 +90,24 @@ for image_name in image_files:
     # 9. Combine horizontal and vertical lines
     grid_image = cv2.add(horizontal_lines, vertical_lines)
 
+    # 10. Harris Corner Detection
+
+    # Harris parameters
+    harris_block_size = 3
+    harris_ksize = 5
+    harris_k = 0.04
+    harris_threshold = 0.035
+    nms_radius = 7
+
     corner_detector = CornerDetector()
 
+    # Harris runs on the preprocessed grid mask (not on the raw gray image)
+    prepared = cv2.GaussianBlur(
+        cv2.dilate(grid_image, np.ones((3, 3), np.uint8)), (5, 5), 0
+    )
+
     harris = cv2.cornerHarris(
-        gray_float,
+        np.float32(prepared) / 255.0,
         blockSize=harris_block_size,
         ksize=harris_ksize,
         k=harris_k
