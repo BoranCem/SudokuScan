@@ -50,15 +50,15 @@ for image_name in image_files:
     # 1. Grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # 2. Gaussian blur
+    # 2. Gaussian Blur
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # 3. Otsu thresholding (kept for comparison)
+    # 3. Otsu Thresholding
     _, otsu = cv2.threshold(
         blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
-    # 4. Adaptive thresholding (normal)
+    # 4. Adaptive Thresholding
     adaptive = cv2.adaptiveThreshold(
         blurred, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -66,21 +66,16 @@ for image_name in image_files:
         21, 5
     )
 
-    # 5. Adaptive thresholding (inverted) -> used for line extraction
-    inverted = cv2.adaptiveThreshold(
-        blurred, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        21, 5
-    )
+    # 5. Invert image
+    inverted = cv2.bitwise_not(otsu)
 
     # 6. Create horizontal and vertical kernels
     horizontal_kernel = cv2.getStructuringElement(
-    cv2.MORPH_RECT, (max(10, width // 40), 1)
+        cv2.MORPH_RECT, (max(10, width // 40), 1)
     )
 
     vertical_kernel = cv2.getStructuringElement(
-    cv2.MORPH_RECT, (1, max(10, height // 40))
+        cv2.MORPH_RECT, (1, max(10, height // 40))
     )
 
     # 7. Detect horizontal lines
