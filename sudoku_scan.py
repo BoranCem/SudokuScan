@@ -113,17 +113,19 @@ for image_name in image_files:
         k=harris_k
     )
 
-    # Dilate Harris response for better visualization
-    harris = cv2.dilate(harris, None)
-
-    corner_points = corner_detector.detect_corners(harris)
-
-    print(f"Detected Harris candidates: {len(corner_points)}")
-
-    # Create a copy of grayscale image
-    harris_result = cv2.cvtColor(
-    gray, cv2.COLOR_GRAY2BGR
+    # Harris candidates (threshold + NMS)
+    raw_points = corner_detector.detect_corners(
+        harris, harris_threshold, nms_radius
     )
+    print(f"Detected Harris candidates: {len(raw_points)}")
+
+    # Restrict candidates to the sudoku region
+    region = corner_detector.region_mask(grid_image)
+    corner_points = corner_detector.filter_by_region(raw_points, region)
+    print(f"Candidates inside region: {len(corner_points)}")
+
+    # Sub-pixel refinement
+    corner_points = corner_detector.refine_subpix(gray, corner_points)
 
     # Draw larger red circles
     for x, y in corner_points:
