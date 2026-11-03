@@ -133,30 +133,5 @@ for image_name in image_files:
         outer = corner_detector.select_outer_corners(
             corner_points, region, gray.shape
         )
-
-    # 12. Save results
-    cv2.imwrite(f"{preprocessing_dir}/gray.png", gray)
-    cv2.imwrite(f"{preprocessing_dir}/blurred.png", blurred)
-    cv2.imwrite(f"{preprocessing_dir}/otsu.png", otsu)
-    cv2.imwrite(f"{preprocessing_dir}/adaptive.png", adaptive)
-
-    # Save line detection results
-    cv2.imwrite(f"{lines_dir}/horizontal_lines.png", horizontal_lines)
-    cv2.imwrite(f"{lines_dir}/vertical_lines.png", vertical_lines)
-    cv2.imwrite(f"{lines_dir}/combined_grid.png", grid_image)
-
-    # Save Harris results
-    cv2.imwrite(f"{corners_dir}/harris_corners.png", harris_result)
-
-    # 13. Display results
-    cv2.imshow("Original", resize_for_display(image, new_size))
-    cv2.imshow("Adaptive Threshold (inv)", resize_for_display(inverted, new_size))
-    cv2.imshow("Combined Sudoku Grid", resize_for_display(grid_image, new_size))
-    cv2.imshow("Grid Corners", resize_for_display(corners_result, new_size))
-    cv2.imshow("Harris Corners", resize_for_display(harris_result, new_size))
-    if warped is not None:
-        cv2.imshow("Warped", warped)
-
-    print("Press any key to continue.")
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    except NotImplementedError:
+        print("select_outer_corners is not implemented yet.")
