@@ -127,14 +127,11 @@ for image_name in image_files:
     # Sub-pixel refinement
     corner_points = corner_detector.refine_subpix(gray, corner_points)
 
-    # Draw larger red circles
-    for x, y in corner_points:
-        cv2.circle(
-            harris_result,
-            (x, y),
-            6,
-            (0, 0, 255),
-            -1
+    # Outer 4 corners (selected among Harris candidates)
+    outer = None
+    try:
+        outer = corner_detector.select_outer_corners(
+            corner_points, region, gray.shape
         )
 
     # 12. Save results
