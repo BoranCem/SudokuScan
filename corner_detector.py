@@ -51,3 +51,20 @@ class CornerDetector:
             crosses.append(e1[0] * e2[1] - e1[1] * e2[0])
         convex = all(c > 0 for c in crosses) or all(c < 0 for c in crosses)
         info["convex"] = convex
+
+        # 4) Area (shoelace formula) relative to the image area
+        x, y = pts[:, 0], pts[:, 1]
+        area = 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+        info["area_ratio"] = round(float(area / (img_shape[0] * img_shape[1])), 3)
+
+        # Decision
+        if not convex:
+            info["reasons"].append("not convex")
+        if any(abs(a - 90) > angle_tol for a in angles):
+            info["reasons"].append(f"angle off by more than {angle_tol} deg")
+        if info["side_ratio"] < min_side_ratio:
+            info["reasons"].append("sides too different")
+        if info["area_ratio"] < min_area_ratio:
+            info["reasons"].append("area too small")
+
+        return len(info["reasons"]) == 0, info
