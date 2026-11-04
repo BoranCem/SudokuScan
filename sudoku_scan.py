@@ -1,8 +1,11 @@
 import cv2
 import numpy as np
 import os
+
 from corner_detector import CornerDetector
 
+
+# Input images
 image_files = [
     "sudoku_01.jpg",
     "sudoku_02.jpg",
@@ -11,127 +14,194 @@ image_files = [
     "sudoku_05.jpg"
 ]
 
-# Resize settings (display only)
-MAX_WIDTH = 800
-MAX_HEIGHT = 600
 
-# Perspective warp output size
-WARP_SIZE = 450
+# Working size: the longest side is limited to this value, so the pixel
+# parameters below are tuned for ~1000 px images (large photos are
+# downscaled, small ones are left as they are).
+MAX_SIDE = 1000
 
 
-def resize_for_display(img, size):
-    return cv2.resize(img, size)
+# Preprocessing parameters (tuned for MAX_SIDE)
+blur_ksize = 5
+adaptive_block = 31      # must be odd
+adaptive_c = 7
+
+
+# Harris parameters (tuned for MAX_SIDE)
+harris_block_size = 3
+harris_ksize = 3
+harris_k = 0.04
+harris_threshold = 0.035
+nms_radius = 7
+
+
+def save_results(base_dir, results):
+    """
+    results: {"subfolder/filename.png": image, ...}
+    Creates the subfolders and writes every image.
+    """
+    for rel_path, img in results.items():
+        path = os.path.join(base_dir, rel_path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        cv2.imwrite(path, img)
+
+
+def draw_points(gray, points, color=(0, 0, 255), radius=6):
+    vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    for x, y in points:
+        cv2.circle(vis, (int(x), int(y)), radius, color, -1)
+    return vis
 
 
 for image_name in image_files:
 
-    image_path = "input/" + image_name
+    image_path = os.path.join("input", image_name)
     image = cv2.imread(image_path)
 
     if image is None:
         print(f"Image could not be loaded: {image_name}")
         continue
 
-    print(f"Processing: {image_name}")
+    print(f"\nProcessing: {image_name}")
 
     image_output_name = os.path.splitext(image_name)[0]
+    output_dir = os.path.join("output", image_output_name)
 
-    preprocessing_dir = f"output/{image_output_name}/preprocessing"
-    lines_dir = f"output/{image_output_name}/lines"
-    corners_dir = f"output/{image_output_name}/corners"
 
-    for d in (preprocessing_dir, lines_dir, corners_dir, warp_dir):
-        os.makedirs(d, exist_ok=True)
+    # 0. Downscale to the working size (keep the factor for original coords)
+    scale = min(1.0, MAX_SIDE / max(image.shape[:2]))
+    if scale < 1.0:
+        image = cv2.resize(
+            image, None, fx=scale, fy=scale,
+            interpolation=cv2.INTER_AREA
+        )
+    print(f"Working size: {image.shape[1]}x{image.shape[0]} (scale {scale:.3f})")
 
-    height, width = image.shape[:2]
-    scale = min(MAX_WIDTH / width, MAX_HEIGHT / height, 1)
-    new_size = (int(width * scale), int(height * scale))
 
     # 1. Grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # 2. Gaussian Blur
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # 3. Otsu Thresholding
+    # 2. Gaussian Blur
+    blurred = cv2.GaussianBlur(gray, (blur_ksize, blur_ksize), 0)
+
+
+    # 3. Otsu Thresholding (kept for comparison only)
     _, otsu = cv2.threshold(
-        blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        blurred,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
-    # 4. Adaptive Thresholding
+
+    # 4. Adaptive Thresholding (normal, for comparison)
     adaptive = cv2.adaptiveThreshold(
-        blurred, 255,
+        blurred,
+        255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY,
-        21, 5
+        adaptive_block,
+        adaptive_c
     )
 
-    # 5. Invert image
-    inverted = cv2.bitwise_not(otsu)
 
-    # 6. Create horizontal and vertical kernels
+    # 5. Grid Line Detection (adaptive inverse: robust to uneven lighting)
+    inverted = cv2.adaptiveThreshold(
+        blurred,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        adaptive_block,
+        adaptive_c
+    )
+
+    height, width = inverted.shape
+
     horizontal_kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT, (max(10, width // 40), 1)
+        cv2.MORPH_RECT,
+        (max(10, width // 40), 1)
     )
+
     vertical_kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT, (1, max(10, height // 40))
+        cv2.MORPH_RECT,
+        (1, max(10, height // 40))
     )
 
-    # 7. Detect horizontal lines
     horizontal_lines = cv2.morphologyEx(
-        inverted, cv2.MORPH_OPEN, horizontal_kernel
+        inverted,
+        cv2.MORPH_OPEN,
+        horizontal_kernel
     )
 
-    # 8. Detect vertical lines
     vertical_lines = cv2.morphologyEx(
-        inverted, cv2.MORPH_OPEN, vertical_kernel
+        inverted,
+        cv2.MORPH_OPEN,
+        vertical_kernel
     )
 
-    # 9. Combine horizontal and vertical lines
     grid_image = cv2.add(horizontal_lines, vertical_lines)
 
-    # 10. Harris Corner Detection
 
-    # Harris parameters
-    harris_block_size = 3
-    harris_ksize = 5
-    harris_k = 0.04
-    harris_threshold = 0.035
-    nms_radius = 7
-
+    # 6. Harris Corner Detection (no dilate on the response: NMS does the job)
     corner_detector = CornerDetector()
 
-    # Harris runs on the preprocessed grid mask (not on the raw gray image)
+    # 6a. On the preprocessed grid mask (main input)
     prepared = cv2.GaussianBlur(
         cv2.dilate(grid_image, np.ones((3, 3), np.uint8)), (5, 5), 0
     )
 
-    harris = cv2.cornerHarris(
+    harris_grid = cv2.cornerHarris(
         np.float32(prepared) / 255.0,
         blockSize=harris_block_size,
         ksize=harris_ksize,
         k=harris_k
     )
 
-    # Harris candidates (threshold + NMS)
-    raw_points = corner_detector.detect_corners(
-        harris, harris_threshold, nms_radius
+    # 6b. On the raw grayscale image (for comparison)
+    harris_gray = cv2.cornerHarris(
+        gray.astype(np.float32) / 255.0,
+        blockSize=harris_block_size,
+        ksize=harris_ksize,
+        k=harris_k
     )
-    print(f"Detected Harris candidates: {len(raw_points)}")
 
-    # Restrict candidates to the sudoku region
-    region = corner_detector.region_mask(grid_image)
-    corner_points = corner_detector.filter_by_region(raw_points, region)
-    print(f"Candidates inside region: {len(corner_points)}")
 
-    # Sub-pixel refinement
-    corner_points = corner_detector.refine_subpix(gray, corner_points)
+    # 7. Detect Harris Candidates (threshold + NMS)
+    corner_points = corner_detector.detect_corners(
+        harris_grid, harris_threshold, nms_radius
+    )
+    corner_points_gray = corner_detector.detect_corners(
+        harris_gray, harris_threshold, nms_radius
+    )
 
-    # Outer 4 corners (selected among Harris candidates)
-    outer = None
-    try:
-        outer = corner_detector.select_outer_corners(
-            corner_points, region, gray.shape
-        )
-    except NotImplementedError:
-        print("select_outer_corners is not implemented yet.")
+    print(f"Harris candidates (grid mask): {len(corner_points)}")
+    print(f"Harris candidates (raw gray):  {len(corner_points_gray)}")
+
+    # Candidates in original-image coordinates (needed for the final output)
+    corner_points_original = [(x / scale, y / scale) for x, y in corner_points]
+
+
+    # 8. Draw Harris Candidates
+    harris_result = draw_points(gray, corner_points)
+    harris_result_gray = draw_points(gray, corner_points_gray)
+
+
+    # 9. Save Results
+    save_results(output_dir, {
+        "preprocessing/gray.png": gray,
+        "preprocessing/blurred.png": blurred,
+        "preprocessing/otsu.png": otsu,
+        "preprocessing/adaptive.png": adaptive,
+        "preprocessing/adaptive_inv.png": inverted,
+        "lines/horizontal_lines.png": horizontal_lines,
+        "lines/vertical_lines.png": vertical_lines,
+        "lines/combined_grid.png": grid_image,
+        "corners/harris_corners.png": harris_result,
+        "corners/harris_corners_gray_input.png": harris_result_gray,
+    })
+
+    print(f"Results saved for: {image_name}")
+
+
+print("\nAll images processed.")
