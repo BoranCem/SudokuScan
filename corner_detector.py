@@ -24,8 +24,14 @@ class CornerDetector:
         pts = CornerDetector.sort_cyclic(pts)
         info = {"reasons": []}
 
-        self.corner_points = [
-            (int(x), int(y)) for y, x in points
-        ]
+        # 1) Side lengths
+        sides = np.array([
+            np.linalg.norm(pts[(i + 1) % 4] - pts[i]) for i in range(4)
+        ])
+        info["sides"] = sides.round(1).tolist()
+        if sides.min() == 0:
+            info["reasons"].append("duplicate points")
+            return False, info
+        info["side_ratio"] = round(float(sides.min() / sides.max()), 3)
 
         return self.corner_points
