@@ -34,4 +34,20 @@ class CornerDetector:
             return False, info
         info["side_ratio"] = round(float(sides.min() / sides.max()), 3)
 
-        return self.corner_points
+        # 2) Interior angles at each vertex
+        angles = []
+        for i in range(4):
+            a = pts[i - 1] - pts[i]
+            b = pts[(i + 1) % 4] - pts[i]
+            cos = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+            angles.append(float(np.degrees(np.arccos(np.clip(cos, -1, 1)))))
+        info["angles"] = [round(a, 1) for a in angles]
+
+        # 3) Convexity: cross products of consecutive edges share one sign
+        crosses = []
+        for i in range(4):
+            e1 = pts[(i + 1) % 4] - pts[i]
+            e2 = pts[(i + 2) % 4] - pts[(i + 1) % 4]
+            crosses.append(e1[0] * e2[1] - e1[1] * e2[0])
+        convex = all(c > 0 for c in crosses) or all(c < 0 for c in crosses)
+        info["convex"] = convex
