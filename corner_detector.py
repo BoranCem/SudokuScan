@@ -96,6 +96,66 @@ class CornerDetector:
 
         return len(info["reasons"]) == 0, info
 
+    @staticmethod
+    def estimate_cell_size(pts):
+        """
+        Estimates the true cell size by looking at structured grid distances 
+        rather than immediate noisy plateaus.
+        """
+        if len(pts) < 10:
+            return 20.0 # Fallback default
+        
+        # Calculate pairwise distances
+        pts_np = np.array(pts, dtype=np.float32)
+        dists_matrix = np.linalg.norm(pts_np[:, None, :] - pts_np[None, :, :], axis=-1)
+        
+        # For each point, find small non-zero distances which typically represent cell steps
+        min_dists = []
+        for row in dists_matrix:
+            valid = row[row > 2.0] # Exclude self and ultra-close duplicates
+            if len(valid) > 0:
+                min_dists.append(np.min(valid))
+                
+        # The median of these minimums gives a much cleaner estimate of cell step
+        return float(np.median(min_dists))
+
+    @staticmethod
+    def collect_chain(start_pt, direction, pts_set, cell_size, max_gap_ratio=1.5):
+        """
+        Walks along a specific direction vector from a start point, 
+        gathering connected points into a chain.
+        """
+        chain = [start_pt]
+        current = np.array(start_pt, dtype=np.float32)
+        dir_norm = direction / (np.linalg.norm(direction) + 1e-5)
+        
+        step_len = cell_size
+        max_step = step_len * max_gap_ratio
+        
+        while True:
+            # Predict next expected position
+            expected = current + dir_norm * step_len
+            
+            # Find candidates near the expected position within tolerance
+            best_next = None
+            min_dist = max_step
+            
+            for p in pts_set:
+                if tuple(p) in [tuple(c) for c in chain]:
+                    continue
+                d = np.linalg.norm(p - expected)
+                if d < min_dist:
+                    min_dist = d
+                    best_next = p
+                    
+            if best_next is not None:
+                chain.append(tuple(best_next))
+                current = np.array(best_next, dtype=np.float32)
+            else:
+                break
+                
+        return chain
+
 
 def select_outer_corners(corner_points, img_shape):
     """
