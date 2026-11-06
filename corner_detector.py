@@ -7,40 +7,32 @@ class CornerDetector:
     def __init__(self):
         self.corner_points = []
         self.selected_corners = []
- 
+
     # ------------------------------------------------------------------
-    # 1) Harris response -> discrete candidates (threshold + NMS)
+    # Harris response -> discrete candidates (relative threshold + NMS)
     # ------------------------------------------------------------------
     def detect_corners(self, harris, rel_threshold=0.035, nms_radius=7):
-        """
-        Returns a list of (x, y) integer candidates.
-        - threshold is relative to the maximum of the response
-        - a pixel survives NMS only if it is the maximum of its
-          (2*nms_radius+1)^2 neighbourhood
-        - plateaus (equal values) are merged into a single point
-        """
         hmax = float(harris.max())
         if hmax <= 0:
             self.corner_points = []
             return self.corner_points
- 
-        thr = rel_threshold * hmax
- 
+
+        # A pixel survives only if it is the maximum of its neighbourhood
         k = 2 * int(nms_radius) + 1
-        # dilate is used ONLY to find local maxima; the response itself
-        # is not modified
         local_max = cv2.dilate(harris, np.ones((k, k), np.uint8))
- 
-        mask = ((harris >= local_max) & (harris > thr)).astype(np.uint8)
- 
-        # Merge plateau pixels (same value) into one point
-        n, _, _, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
- 
+        mask = ((harris >= local_max) & (harris > rel_threshold * hmax)).astype(np.uint8)
+
+        # Equal-valued neighbouring pixels (plateaus) become one point
+        _, _, _, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
+
         self.corner_points = [
-            (int(round(cx)), int(round(cy))) for cx, cy in centroids[1:]
+            (int(round(x)), int(round(y))) for x, y in centroids[1:]
         ]
         return self.corner_points
 
+    # ------------------------------------------------------------------
+    # Helpers for the corner selection rule
+    # ------------------------------------------------------------------
     @staticmethod
     def sort_cyclic(pts):
         # Sort points by angle around their centroid (independent of rotation)

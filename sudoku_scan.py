@@ -178,6 +178,7 @@ for image_name in image_files:
     print(f"Harris candidates (grid mask): {len(corner_points)}")
     print(f"Harris candidates (raw gray):  {len(corner_points_gray)}")
 
+
     # Candidates in original-image coordinates (needed for the final output)
     corner_points_original = [(x / scale, y / scale) for x, y in corner_points]
 
