@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 from corner_detector import CornerDetector
-from corner_selection import select_outer_corners
+from corner_detector import select_outer_corners
 
 
 # Input images
