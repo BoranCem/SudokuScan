@@ -156,49 +156,34 @@ class CornerDetector:
                 
         return chain
 
-
 def select_outer_corners(corner_points, img_shape):
     """
     Automatically selects the 4 outer corners of the Sudoku puzzle from Harris candidates.
     Returns: list of 4 tuples [(x, y), ...] in (TL, TR, BR, BL) order, or None.
     """
-    if len(corner_points) < 4:
+    if len(corner_points) < 16:
         return None
 
-    pts = np.array(corner_points, dtype=np.float32)
+    pts_np = np.array(corner_points, dtype=np.float32)
+    cell_size = CornerDetector.estimate_cell_size(corner_points)
 
-    # 1. Estimate cell size / neighborhood scale (median of nearest-neighbor distances)
-    # Calculate the distance of each point to its nearest neighbor
-    distances = []
-    for i, p in enumerate(pts):
-        dists = np.linalg.norm(pts - p, axis=1)
-        dists = dists[dists > 0] # Exclude self
-        if len(dists) > 0:
-            distances.append(np.min(dists))
+    center = pts_np.mean(axis=0)
     
-    if not distances:
+    tl_cand = pts_np[np.argmin(pts_np[:, 0] + pts_np[:, 1])]
+    tr_cand = pts_np[np.argmax(pts_np[:, 0] - pts_np[:, 1])]
+    br_cand = pts_np[np.argmax(pts_np[:, 0] + pts_np[:, 1])]
+    bl_cand = pts_np[np.argmin(pts_np[:, 0] - pts_np[:, 1])]
+
+    rough_corners = [tl_cand, tr_cand, br_cand, bl_cand]
+    
+    refined_corners = []
+    for rc in rough_corners:
+        dists = np.linalg.norm(pts_np - rc, axis=1)
+        best_idx = np.argmin(dists)
+        refined_corners.append(tuple(pts_np[best_idx]))
+
+    ok, info = CornerDetector.check_quad(refined_corners, img_shape)
+    if not ok:
         return None
-    
-    cell_size = np.median(distances)
-    
-    # 2. Rough approach: Select the outermost corner candidates covering the Sudoku boundaries.
-    # Find the center point
-    center = pts.mean(axis=0)
-    
-    # Select points representing the 4 quadrants (TL, TR, BR, BL) furthest from the center
-    tl_cands = pts[(pts[:, 0] < center[0]) & (pts[:, 1] < center[1])]
-    tr_cands = pts[(pts[:, 0] >= center[0]) & (pts[:, 1] < center[1])]
-    br_cands = pts[(pts[:, 0] >= center[0]) & (pts[:, 1] >= center[1])]
-    bl_cands = pts[(pts[:, 0] < center[0]) & (pts[:, 1] >= center[1])]
-    
-    # Choose the point furthest from the center in each region
-    selected = []
-    for region_pts in [tl_cands, tr_cands, br_cands, bl_cands]:
-        if len(region_pts) == 0:
-            return None
-        # The point furthest from the center is the outer corner candidate
-        dists_to_center = np.linalg.norm(region_pts - center, axis=1)
-        best_pt = region_pts[np.argmax(dists_to_center)]
-        selected.append(best_pt)
-        
-    return [tuple(pt) for pt in selected]
+
+    return refined_corners
