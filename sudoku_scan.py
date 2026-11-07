@@ -31,7 +31,7 @@ adaptive_c = 7
 # Kernel length = image side / line_kernel_div. Longer kernels remove digits
 # but break rotated / slanted lines, so this goes into the parameter study.
 line_kernel_div = 80
-region_margin_ratio = 0.01   # region is grown by this fraction of the short side
+region_margin_ratio = 0.006  # region is grown by this fraction of the short side
 
 
 # Harris parameters (tuned for MAX_SIDE)
@@ -62,17 +62,16 @@ def draw_points(gray, points, color=(0, 0, 255), radius=6):
 
 def make_region_mask(grid_mask, margin_ratio=region_margin_ratio):
     """
-    Puzzle region from the line mask. Gaps are closed with a small kernel and
-    only the LARGEST connected component (the grid) is kept, so printed labels
-    such as "9x9" / "zor" and neighbouring tables, which are separate
-    components, stay outside. The convex hull of that component is filled and
-    grown a little. This is only a region; the corner coordinates still come
-    from Harris candidates.
+    Region of the puzzle's own line structure. Tiny gaps are closed and only
+    the LARGEST connected component of the line mask (the grid) is kept; its
+    pixels (not its convex hull) are grown by a small margin. Printed labels
+    such as "9x9" / "zor" and neighbouring tables are separate components, so
+    candidates on them fall outside the region. This is only a region: the
+    corner coordinates still come from Harris candidates.
     """
     h, w = grid_mask.shape[:2]
-    k = max(3, int(round(min(h, w) * 0.01)) | 1)
     closed = cv2.morphologyEx(
-        grid_mask, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8)
+        grid_mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8)
     )
 
     n, labels, stats, _ = cv2.connectedComponentsWithStats(
@@ -84,9 +83,7 @@ def make_region_mask(grid_mask, margin_ratio=region_margin_ratio):
         return region
 
     biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    ys, xs = np.nonzero(labels == biggest)
-    hull = cv2.convexHull(np.column_stack([xs, ys]).astype(np.int32))
-    cv2.fillConvexPoly(region, hull, 255)
+    region[labels == biggest] = 255
 
     m = max(3, int(round(min(h, w) * margin_ratio)))
     return cv2.dilate(region, np.ones((2 * m + 1, 2 * m + 1), np.uint8))
