@@ -2,8 +2,7 @@ import cv2
 import numpy as np
 import os
 
-from corner_detector import CornerDetector
-from corner_detector import select_outer_corners
+from corner_detector import CornerDetector, select_outer_corners
 
 
 # Input images
@@ -28,18 +27,19 @@ adaptive_block = 31      # must be odd
 adaptive_c = 7
 
 
+# Line mask (used ONLY to find the puzzle region, not as Harris input).
+# Kernel length = image side / line_kernel_div. Longer kernels remove digits
+# but break rotated / slanted lines, so this goes into the parameter study.
+line_kernel_div = 80
+region_margin_ratio = 0.01   # region is grown by this fraction of the short side
+
+
 # Harris parameters (tuned for MAX_SIDE)
 harris_block_size = 3
 harris_ksize = 3
 harris_k = 0.04
 harris_threshold = 0.035
 nms_radius = 7
-
-
-# Sub-pixel refinement (applied only to the 4 selected corners)
-# The window is proportional to the working image size.
-subpix_win_ratio = 0.006
-subpix_criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.001)
 
 
 def save_results(base_dir, results):
@@ -60,55 +60,40 @@ def draw_points(gray, points, color=(0, 0, 255), radius=6):
     return vis
 
 
-def normalize_response(resp):
-    # Gamma lifts weak responses so the map is readable
-    r = np.clip(resp, 0, None)
-    if r.max() > 0:
-        r = r / r.max()
-    return (np.power(r, 0.25) * 255).astype(np.uint8)
-
-
-def refine_corners(img, pts, win):
+def make_region_mask(grid_mask, margin_ratio=region_margin_ratio):
     """
-    cornerSubPix on each selected point.
-    Points too close to the border are left as they are.
+    Puzzle region from the line mask: close gaps, take the largest outer
+    contour, fill its convex hull and grow it a little. This is only a
+    region; the corner coordinates still come from Harris candidates.
     """
-    h, w = img.shape[:2]
-    refined = []
-    for x, y in pts:
-        p = np.array([[[x, y]]], np.float32)
-        if win + 1 <= x < w - win - 1 and win + 1 <= y < h - win - 1:
-            cv2.cornerSubPix(img, p, (win, win), (-1, -1), subpix_criteria)
-        refined.append((float(p[0, 0, 0]), float(p[0, 0, 1])))
-    return refined
+    h, w = grid_mask.shape[:2]
+    k = max(3, int(round(min(h, w) * 0.01)) | 1)
+    kernel = np.ones((k, k), np.uint8)
+
+    closed = cv2.dilate(
+        cv2.morphologyEx(grid_mask, cv2.MORPH_CLOSE, kernel), kernel
+    )
+    contours, _ = cv2.findContours(
+        closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    region = np.zeros((h, w), np.uint8)
+    if not contours:
+        return region
+
+    largest = max(contours, key=cv2.contourArea)
+    cv2.fillConvexPoly(region, cv2.convexHull(largest), 255)
+
+    m = max(3, int(round(min(h, w) * margin_ratio)))
+    return cv2.dilate(region, np.ones((2 * m + 1, 2 * m + 1), np.uint8))
 
 
-def draw_selected(gray, candidates, selected):
-    """All candidates in grey, selected quad with TL/TR/BR/BL labels."""
-    vis = draw_points(gray, candidates, color=(160, 160, 160), radius=3)
-    if selected is None:
-        cv2.putText(vis, "not_found", (20, 50), cv2.FONT_HERSHEY_SIMPLEX,
-                    1.2, (0, 0, 255), 3)
-        return vis
-    pts = np.array(selected, np.int32)
-    cv2.polylines(vis, [pts.reshape(-1, 1, 2)], True, (0, 200, 0), 2)
-    for name, (x, y) in zip(["TL", "TR", "BR", "BL"], selected):
-        cv2.circle(vis, (int(x), int(y)), 8, (0, 0, 255), -1)
-        cv2.putText(vis, name, (int(x) + 10, int(y) - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
-    return vis
-
-
-def draw_chain(gray, candidates, anchor, chain, color=(0, 200, 0)):
-    """
-    Dev helper for chain collection: all candidates in grey,
-    the chain in colour, the anchor circled in red.
-    """
-    vis = draw_points(gray, candidates, color=(160, 160, 160), radius=3)
-    for x, y in chain:
-        cv2.circle(vis, (int(x), int(y)), 6, color, -1)
-    cv2.circle(vis, (int(anchor[0]), int(anchor[1])), 10, (0, 0, 255), 2)
-    return vis
+def filter_by_region(points, region):
+    h, w = region.shape[:2]
+    return [
+        (x, y) for x, y in points
+        if 0 <= int(x) < w and 0 <= int(y) < h and region[int(y), int(x)] > 0
+    ]
 
 
 for image_name in image_files:
@@ -178,12 +163,12 @@ for image_name in image_files:
 
     horizontal_kernel = cv2.getStructuringElement(
         cv2.MORPH_RECT,
-        (max(10, width // 40), 1)
+        (max(10, width // line_kernel_div), 1)
     )
 
     vertical_kernel = cv2.getStructuringElement(
         cv2.MORPH_RECT,
-        (1, max(10, height // 40))
+        (1, max(10, height // line_kernel_div))
     )
 
     horizontal_lines = cv2.morphologyEx(
@@ -204,9 +189,11 @@ for image_name in image_files:
     # 6. Harris Corner Detection (no dilate on the response: NMS does the job)
     corner_detector = CornerDetector()
 
-    # 6a. On the preprocessed grid mask (main input)
+    # 6a. On the adaptive-inverse mask WITHOUT line opening (main input):
+    # opening with horizontal/vertical kernels breaks rotated and slanted
+    # lines, which removes the candidates along the puzzle edges.
     prepared = cv2.GaussianBlur(
-        cv2.dilate(grid_image, np.ones((3, 3), np.uint8)), (5, 5), 0
+        cv2.dilate(inverted, np.ones((3, 3), np.uint8)), (5, 5), 0
     )
 
     harris_grid = cv2.cornerHarris(
@@ -237,37 +224,40 @@ for image_name in image_files:
     print(f"Harris candidates (raw gray):  {len(corner_points_gray)}")
 
 
-    # Candidates in original-image coordinates (kept for reference; the final
-    # output uses the selected and refined corners from step 7b)
-    corner_points_original = [(x / scale, y / scale) for x, y in corner_points]
+    # 7b. Restrict candidates to the puzzle region (line mask -> region only)
+    region = make_region_mask(grid_image)
+    candidates = filter_by_region(corner_points, region)
+    print(f"Candidates inside region:      {len(candidates)}")
 
 
-    # 7b. Outer corner selection (own rule) + sub-pixel refinement
-    selected = select_outer_corners(corner_points, gray.shape)
-    corners_original = None
+    # 7c. Select the 4 outer corners among the Harris candidates
+    outer = select_outer_corners(candidates, gray.shape)
 
-    if selected is None:
-        print("Outer corners: not_found")
+    if outer is None:
+        print("Outer corners: NOT FOUND")
+        outer_original = None
     else:
-        # Final sanity check only reports; whether to reject is your decision
-        ok, info = CornerDetector.check_quad(selected, gray.shape)
-        print(f"Quad check: {'ok' if ok else info['reasons']}")
-
-        win = max(3, int(round(subpix_win_ratio * max(gray.shape))))
-        selected = refine_corners(blurred, selected, win)
-
-        # Back to original-image coordinates (pixel-centre aware)
-        corners_original = [
-            ((x + 0.5) / scale - 0.5, (y + 0.5) / scale - 0.5)
-            for x, y in selected
-        ]
-        print(f"Corners (original coords): "
-              f"{np.round(corners_original, 1).tolist()}")
+        # Back to original-image coordinates (needed for the final output)
+        outer_original = [(x / scale, y / scale) for x, y in outer]
+        print("Outer corners (working size): "
+              + ", ".join(f"({x:.1f}, {y:.1f})" for x, y in outer))
+        print("Outer corners (original):     "
+              + ", ".join(f"({x:.1f}, {y:.1f})" for x, y in outer_original))
 
 
     # 8. Draw Harris Candidates
     harris_result = draw_points(gray, corner_points)
     harris_result_gray = draw_points(gray, corner_points_gray)
+
+    # Region contour (green), surviving candidates (red), selected corners (blue)
+    selected_result = draw_points(gray, candidates, (0, 0, 255), 4)
+    region_contours, _ = cv2.findContours(
+        region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    cv2.drawContours(selected_result, region_contours, -1, (0, 255, 0), 2)
+    if outer is not None:
+        for x, y in outer:
+            cv2.circle(selected_result, (int(x), int(y)), 14, (255, 0, 0), 3)
 
 
     # 9. Save Results
@@ -280,11 +270,10 @@ for image_name in image_files:
         "lines/horizontal_lines.png": horizontal_lines,
         "lines/vertical_lines.png": vertical_lines,
         "lines/combined_grid.png": grid_image,
-        "corners/harris_response_grid.png": normalize_response(harris_grid),
-        "corners/harris_response_gray.png": normalize_response(harris_gray),
         "corners/harris_corners.png": harris_result,
         "corners/harris_corners_gray_input.png": harris_result_gray,
-        "corners/selected_corners.png": draw_selected(gray, corner_points, selected),
+        "corners/selected.png": selected_result,
+        "lines/region_mask.png": region,
     })
 
     print(f"Results saved for: {image_name}")
