@@ -62,27 +62,31 @@ def draw_points(gray, points, color=(0, 0, 255), radius=6):
 
 def make_region_mask(grid_mask, margin_ratio=region_margin_ratio):
     """
-    Puzzle region from the line mask: close gaps, take the largest outer
-    contour, fill its convex hull and grow it a little. This is only a
-    region; the corner coordinates still come from Harris candidates.
+    Puzzle region from the line mask. Gaps are closed with a small kernel and
+    only the LARGEST connected component (the grid) is kept, so printed labels
+    such as "9x9" / "zor" and neighbouring tables, which are separate
+    components, stay outside. The convex hull of that component is filled and
+    grown a little. This is only a region; the corner coordinates still come
+    from Harris candidates.
     """
     h, w = grid_mask.shape[:2]
     k = max(3, int(round(min(h, w) * 0.01)) | 1)
-    kernel = np.ones((k, k), np.uint8)
-
-    closed = cv2.dilate(
-        cv2.morphologyEx(grid_mask, cv2.MORPH_CLOSE, kernel), kernel
+    closed = cv2.morphologyEx(
+        grid_mask, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8)
     )
-    contours, _ = cv2.findContours(
-        closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(
+        closed, connectivity=8
     )
 
     region = np.zeros((h, w), np.uint8)
-    if not contours:
+    if n <= 1:
         return region
 
-    largest = max(contours, key=cv2.contourArea)
-    cv2.fillConvexPoly(region, cv2.convexHull(largest), 255)
+    biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    ys, xs = np.nonzero(labels == biggest)
+    hull = cv2.convexHull(np.column_stack([xs, ys]).astype(np.int32))
+    cv2.fillConvexPoly(region, hull, 255)
 
     m = max(3, int(round(min(h, w) * margin_ratio)))
     return cv2.dilate(region, np.ones((2 * m + 1, 2 * m + 1), np.uint8))
