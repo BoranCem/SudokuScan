@@ -53,11 +53,10 @@ args = parser.parse_args()
 
 if args.input:
     image_paths = [args.input]
-elif args.batch:
-    image_paths = [os.path.join(args.batch, f) for f in sorted(os.listdir(args.batch))
-                   if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"))]
 else:
-    parser.error("give --input or --batch")
+    folder = args.batch or "input"      # no argument: use the input folder
+    image_paths = [os.path.join(folder, f) for f in sorted(os.listdir(folder))
+                   if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"))]
 
 tesseract, message = recognition.load_tesseract()
 if message:

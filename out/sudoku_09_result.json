@@ -1,0 +1,15 @@
+{
+  "image": "sudoku_09.jpg",
+  "corners": null,
+  "A3": null,
+  "A4": null,
+  "H4": null,
+  "a3_corner_err_px": null,
+  "a4_rms_px": null,
+  "grid": null,
+  "verdict": "not_found",
+  "runtime_s": 0.212,
+  "n_harris_candidates": 1513,
+  "n_region_candidates": 220,
+  "error": "outer corners not found"
+}
