@@ -1,74 +1,56 @@
-# SudokuScan
+# SudokuScan (COMP 482, Project 1)
 
-SudokuScan is a computer vision project developed for COMP482. The goal is to detect a printed Sudoku puzzle from a photograph, correct its perspective, recognize its digits, and check the validity of the resulting Sudoku grid.
+Photograph of a printed sudoku -> 9x9 digital grid. The four outer corners are
+found with the Harris detector, the puzzle is rectified with an affine (A3, A4)
+and a projective (H4) model, the 81 cells are cut out and the digits are read
+with Tesseract.
 
-## Project Goals
+## Install
 
-- Preprocess Sudoku photographs.
-- Detect the four outer corners using Harris corner detection.
-- Rectify the Sudoku using affine transformations and a homography.
-- Recognize digits using OCR.
-- Represent the puzzle as a 9×9 grid, using `0` for empty cells.
-- Check Sudoku row, column, and 3×3 box validity.
-
-## Technologies
-
-- Python 3.10+
-- OpenCV
-- NumPy
-- Tesseract OCR
-- pytesseract
-
-## Requirements
-
-Python dependencies are listed in `requirements.txt`.
-
-Tesseract OCR must also be installed separately on your computer and accessible from the command line.
-
-## Setup
-
-### 1. Clone the repository
-
-```bash
-git clone <YOUR-GITHUB-REPOSITORY-URL>
-cd sudokuScan
+```
+pip install -r requirements.txt
 ```
 
-### 2. Create and activate a virtual environment
+The Tesseract engine is a separate program:
 
-On Windows PowerShell:
+* Windows: install from https://github.com/UB-Mannheim/tesseract/wiki (default
+  path `C:\Program Files\Tesseract-OCR\tesseract.exe` is found automatically).
+  Elsewhere: set the environment variable `TESSERACT_CMD` to the executable.
+* Ubuntu/Debian: `sudo apt install tesseract-ocr`
+* macOS: `brew install tesseract`
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
+## Run
+
+```
+python sudoku_scan.py --input photo.jpg --outdir out/
+python sudoku_scan.py --batch images_dir/ --outdir results/          # grader mode
+python sudoku_scan.py --batch input/ --outdir output/ --debug        # + debug folders
 ```
 
-### 3. Install Python dependencies
+For every image `<name>` the output directory gets `<name>_grid.txt`,
+`<name>_result.json`, `<name>_harris.png`, `<name>_rect_A3.png`,
+`<name>_rect_A4.png`, `<name>_rect_H4.png` and `<name>_debug.png`. If no puzzle
+is found, `<name>_result.json` contains `"verdict": "not_found"` (a failing
+image never stops a batch). `--debug` also writes
+`<outdir>/<name>/{preprocessing,lines,corners,recognition}/`.
 
-```bash
-python -m pip install -r requirements.txt
-```
+The parameters are the constants at the top of `sudoku_scan.py` (edit and
+rerun for the parameter study). The result JSON contains
+`n_harris_candidates` and `n_region_candidates` for that purpose.
 
-### 4. Install Tesseract OCR
+## Layout
 
-Install the Tesseract OCR application separately and make sure the `tesseract` command is available in your terminal.
+| File | Content |
+|---|---|
+| `sudoku_scan.py` | main script: numbered steps from photo to result |
+| `helpers.py` | drawing, puzzle region, sub-pixel refinement, saving the output files |
+| `corner_detector.py` | Harris candidate extraction (threshold + NMS) and outer-corner selection |
+| `rectification.py` | A3, A4, H4 estimation, residuals, warping |
+| `recognition.py` | cell extraction, empty-cell criterion, OCR preparation, Tesseract |
+| `validation.py` | row / column / box check |
 
-Verify the installation:
+## Notes
 
-```bash
-tesseract --version
-```
-
-## Project Status
-
-The development environment and initial OCR setup have been prepared. The image-processing pipeline, corner detection, perspective correction, digit recognition, and validation stages will be implemented incrementally.
-
-## Usage
-
-The command-line interface and output formats will be documented here as they are implemented.
-
-## Course
-
-COMP482 — Computer Vision
-
-Project: SudokuScan
+* All pixel parameters are tuned for a working size of 1000 px on the longer
+  side; larger photos are downscaled, corners are reported in original pixels.
+* Matrices in the JSON map original-image pixels to the 450x450 target.
