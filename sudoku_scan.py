@@ -1,283 +1,199 @@
+"""
+SudokuScan: photograph of a printed sudoku -> 9x9 digital grid.
+
+    python sudoku_scan.py --input photo.jpg --outdir out/
+    python sudoku_scan.py --batch images_dir/ --outdir results/
+    python sudoku_scan.py --batch input/ --outdir output/ --debug
+"""
+import argparse
+import os
+import time
+
 import cv2
 import numpy as np
-import os
 
 from corner_detector import CornerDetector, select_outer_corners
-
-
-# Input images
-image_files = [
-    "sudoku_01.jpg",
-    "sudoku_02.jpg",
-    "sudoku_03.jpg",
-    "sudoku_04.jpg",
-    "sudoku_05.jpg"
-]
+import helpers
+import rectification
+import recognition
+import validation
 
 
 # Working size: the longest side is limited to this value, so the pixel
-# parameters below are tuned for ~1000 px images (large photos are
-# downscaled, small ones are left as they are).
+# parameters below are tuned for ~1000 px images.
 MAX_SIDE = 1000
 
-
-# Preprocessing parameters (tuned for MAX_SIDE)
+# Preprocessing
 blur_ksize = 5
-adaptive_block = 31      # must be odd
-adaptive_c = 7
+adaptive_block = 31          # must be odd
+adaptive_c = 3               # low value keeps thin lines visible in shadows
+line_kernel_div = 80         # line kernel length = image side / this value
+region_margin_ratio = 0.006  # puzzle region is grown by this * short side
 
-
-# Line mask (used ONLY to find the puzzle region, not as Harris input).
-# Kernel length = image side / line_kernel_div. Longer kernels remove digits
-# but break rotated / slanted lines, so this goes into the parameter study.
-line_kernel_div = 80
-region_margin_ratio = 0.006  # region is grown by this fraction of the short side
-
-
-# Harris parameters (tuned for MAX_SIDE)
+# Harris
 harris_block_size = 3
 harris_ksize = 3
 harris_k = 0.04
 harris_threshold = 0.035
 nms_radius = 7
 
-
-def save_results(base_dir, results):
-    """
-    results: {"subfolder/filename.png": image, ...}
-    Creates the subfolders and writes every image.
-    """
-    for rel_path, img in results.items():
-        path = os.path.join(base_dir, rel_path)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        cv2.imwrite(path, img)
+# Sub-pixel refinement of the four selected corners
+subpix_win_ratio = 0.012
+subpix_max_shift_ratio = 0.02
 
 
-def draw_points(gray, points, color=(0, 0, 255), radius=6):
-    vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-    for x, y in points:
-        cv2.circle(vis, (int(x), int(y)), radius, color, -1)
-    return vis
+# ---- command line ---------------------------------------------------------
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", help="one photograph")
+parser.add_argument("--batch", help="a folder with photographs")
+parser.add_argument("--outdir", default="out", help="output folder")
+parser.add_argument("--debug", action="store_true",
+                    help="also save the preprocessing / lines / corners / recognition folders")
+args = parser.parse_args()
+
+if args.input:
+    image_paths = [args.input]
+elif args.batch:
+    image_paths = [os.path.join(args.batch, f) for f in sorted(os.listdir(args.batch))
+                   if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"))]
+else:
+    parser.error("give --input or --batch")
+
+tesseract, message = recognition.load_tesseract()
+if message:
+    print("WARNING:", message)
 
 
-def make_region_mask(grid_mask, margin_ratio=region_margin_ratio):
-    """
-    Region of the puzzle's own line structure. Tiny gaps are closed and only
-    the LARGEST connected component of the line mask (the grid) is kept; its
-    pixels (not its convex hull) are grown by a small margin. Printed labels
-    such as "9x9" / "zor" and neighbouring tables are separate components, so
-    candidates on them fall outside the region. This is only a region: the
-    corner coordinates still come from Harris candidates.
-    """
-    h, w = grid_mask.shape[:2]
-    closed = cv2.morphologyEx(
-        grid_mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8)
-    )
+for image_path in image_paths:
 
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(
-        closed, connectivity=8
-    )
+    start_time = time.time()
+    name = os.path.splitext(os.path.basename(image_path))[0]
+    print(f"Processing: {name}")
 
-    region = np.zeros((h, w), np.uint8)
-    if n <= 1:
-        return region
+    # Everything that goes into <name>_result.json (a dictionary)
+    result = {
+        "image": os.path.basename(image_path),
+        "corners": None, "A3": None, "A4": None, "H4": None,
+        "a3_corner_err_px": None, "a4_rms_px": None,
+        "grid": None, "verdict": "not_found", "runtime_s": None,
+    }
+    images = {}   # files saved next to the result: {"_harris.png": image, ...}
+    debug = {}    # extra files, saved only with --debug
 
-    biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    region[labels == biggest] = 255
+    try:
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError("image could not be read")
 
-    m = max(3, int(round(min(h, w) * margin_ratio)))
-    return cv2.dilate(region, np.ones((2 * m + 1, 2 * m + 1), np.uint8))
+        # 1. Downscale large photos (corners are converted back at the end)
+        scale = min(1.0, MAX_SIDE / max(image.shape[:2]))
+        if scale < 1.0:
+            work = cv2.resize(image, None, fx=scale, fy=scale,
+                              interpolation=cv2.INTER_AREA)
+        else:
+            work = image
 
+        # 2. Grayscale and Gaussian blur
+        gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (blur_ksize, blur_ksize), 0)
 
-def filter_by_region(points, region):
-    h, w = region.shape[:2]
-    return [
-        (x, y) for x, y in points
-        if 0 <= int(x) < w and 0 <= int(y) < h and region[int(y), int(x)] > 0
-    ]
+        # 3. Adaptive threshold, inverted (lines and digits become white)
+        inverted = cv2.adaptiveThreshold(
+            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV, adaptive_block, adaptive_c)
 
+        # 4. Grid lines (only used to find the puzzle region)
+        height, width = inverted.shape
+        horizontal_kernel = cv2.getStructuringElement(
+            cv2.MORPH_RECT, (max(10, width // line_kernel_div), 1))
+        vertical_kernel = cv2.getStructuringElement(
+            cv2.MORPH_RECT, (1, max(10, height // line_kernel_div)))
+        horizontal_lines = cv2.morphologyEx(inverted, cv2.MORPH_OPEN, horizontal_kernel)
+        vertical_lines = cv2.morphologyEx(inverted, cv2.MORPH_OPEN, vertical_kernel)
+        grid_image = cv2.add(horizontal_lines, vertical_lines)
 
-for image_name in image_files:
+        # 5. Harris corner candidates (threshold + non-maximum suppression)
+        prepared = cv2.GaussianBlur(
+            cv2.dilate(inverted, np.ones((3, 3), np.uint8)), (5, 5), 0)
+        harris = cv2.cornerHarris(
+            np.float32(prepared) / 255.0,
+            blockSize=harris_block_size, ksize=harris_ksize, k=harris_k)
+        corner_detector = CornerDetector()
+        corner_points = corner_detector.detect_corners(harris, harris_threshold, nms_radius)
 
-    image_path = os.path.join("input", image_name)
-    image = cv2.imread(image_path)
+        # 6. Keep candidates inside the puzzle region, select the 4 outer
+        #    corners among them, refine them to sub-pixel accuracy
+        region = helpers.make_region_mask(grid_image, region_margin_ratio)
+        candidates = helpers.filter_by_region(corner_points, region)
+        outer = select_outer_corners(candidates, gray.shape)
 
-    if image is None:
-        print(f"Image could not be loaded: {image_name}")
-        continue
+        corners = None
+        if outer is not None:
+            corners = helpers.refine_corners(
+                gray, outer, subpix_win_ratio, subpix_max_shift_ratio)
 
-    print(f"\nProcessing: {image_name}")
+        images["_harris.png"] = helpers.make_harris_image(
+            harris, corner_points, candidates, corners)
+        result["n_harris_candidates"] = len(corner_points)
+        result["n_region_candidates"] = len(candidates)
 
-    image_output_name = os.path.splitext(image_name)[0]
-    output_dir = os.path.join("output", image_output_name)
+        debug["preprocessing/gray.png"] = gray
+        debug["preprocessing/blurred.png"] = blurred
+        debug["preprocessing/adaptive_inv.png"] = inverted
+        debug["lines/horizontal_lines.png"] = horizontal_lines
+        debug["lines/vertical_lines.png"] = vertical_lines
+        debug["lines/combined_grid.png"] = grid_image
+        debug["lines/region_mask.png"] = region
+        debug["corners/harris_corners.png"] = helpers.draw_points(gray, corner_points)
+        selected_view = helpers.draw_points(gray, candidates, (0, 0, 255), 4)
+        if corners is not None:
+            for x, y in corners:
+                cv2.circle(selected_view, (int(round(x)), int(round(y))), 14, (255, 0, 0), 3)
+        debug["corners/selected.png"] = selected_view
 
+        if corners is None:
+            raise ValueError("outer corners not found")
 
-    # 0. Downscale to the working size (keep the factor for original coords)
-    scale = min(1.0, MAX_SIDE / max(image.shape[:2]))
-    if scale < 1.0:
-        image = cv2.resize(
-            image, None, fx=scale, fy=scale,
-            interpolation=cv2.INTER_AREA
-        )
-    print(f"Working size: {image.shape[1]}x{image.shape[0]} (scale {scale:.3f})")
+        # 7. Rectification: A3, A4 and H4 (450x450)
+        models = rectification.estimate_models(corners)
+        warped = rectification.warp_all(work, models)
+        images["_rect_A3.png"] = warped["A3"]
+        images["_rect_A4.png"] = warped["A4"]
+        images["_rect_H4.png"] = warped["H4"]
 
+        # results in original-image coordinates
+        result["corners"] = (corners / scale).tolist()
+        result["A3"] = rectification.to_original_coordinates(models["A3"], scale).tolist()
+        result["A4"] = rectification.to_original_coordinates(models["A4"], scale).tolist()
+        result["H4"] = rectification.to_original_coordinates(models["H4"], scale).tolist()
+        result["a3_corner_err_px"] = round(models["a3_corner_err_px"], 4)
+        result["a4_rms_px"] = round(models["a4_rms_px"], 4)
+        result["h4_max_corner_err_px"] = float(models["h4_max_corner_err_px"])
 
-    # 1. Grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # 8. Cells, empty/filled decision and digit recognition (on H4)
+        rect_gray = cv2.cvtColor(warped["H4"], cv2.COLOR_BGR2GRAY)
+        recognised = recognition.recognise_grid(rect_gray, pytesseract=tesseract)
+        grid = recognised["grid"]
+        result["grid"] = grid
+        if tesseract is None:
+            result["warnings"] = ["OCR engine unavailable: digits were not read"]
+        debug["recognition/ink.png"] = recognised["ink"]
+        debug["recognition/ocr_inputs.png"] = recognition.ocr_contact_sheet(
+            recognised["ocr_inputs"])
 
+        # 9. Validity check (row, column, 3x3 box)
+        is_valid, conflicts = validation.check_validity(grid)
+        result["verdict"] = "valid" if is_valid else "invalid"
+        result["conflicts"] = conflicts
+        images["_debug.png"] = helpers.make_debug_image(warped["H4"], grid, conflicts)
 
-    # 2. Gaussian Blur
-    blurred = cv2.GaussianBlur(gray, (blur_ksize, blur_ksize), 0)
+    except Exception as error:      # one bad image must never stop the batch
+        result["error"] = str(error)
 
+    # 10. Save the output files
+    result["runtime_s"] = round(time.time() - start_time, 3)
+    helpers.save_outputs(args.outdir, name, result, images)
+    if args.debug:
+        helpers.save_images(os.path.join(args.outdir, name), debug)
 
-    # 3. Otsu Thresholding (kept for comparison only)
-    _, otsu = cv2.threshold(
-        blurred,
-        0,
-        255,
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )
-
-
-    # 4. Adaptive Thresholding (normal, for comparison)
-    adaptive = cv2.adaptiveThreshold(
-        blurred,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        adaptive_block,
-        adaptive_c
-    )
-
-
-    # 5. Grid Line Detection (adaptive inverse: robust to uneven lighting)
-    inverted = cv2.adaptiveThreshold(
-        blurred,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        adaptive_block,
-        adaptive_c
-    )
-
-    height, width = inverted.shape
-
-    horizontal_kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT,
-        (max(10, width // line_kernel_div), 1)
-    )
-
-    vertical_kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT,
-        (1, max(10, height // line_kernel_div))
-    )
-
-    horizontal_lines = cv2.morphologyEx(
-        inverted,
-        cv2.MORPH_OPEN,
-        horizontal_kernel
-    )
-
-    vertical_lines = cv2.morphologyEx(
-        inverted,
-        cv2.MORPH_OPEN,
-        vertical_kernel
-    )
-
-    grid_image = cv2.add(horizontal_lines, vertical_lines)
-
-
-    # 6. Harris Corner Detection (no dilate on the response: NMS does the job)
-    corner_detector = CornerDetector()
-
-    # 6a. On the adaptive-inverse mask WITHOUT line opening (main input):
-    # opening with horizontal/vertical kernels breaks rotated and slanted
-    # lines, which removes the candidates along the puzzle edges.
-    prepared = cv2.GaussianBlur(
-        cv2.dilate(inverted, np.ones((3, 3), np.uint8)), (5, 5), 0
-    )
-
-    harris_grid = cv2.cornerHarris(
-        np.float32(prepared) / 255.0,
-        blockSize=harris_block_size,
-        ksize=harris_ksize,
-        k=harris_k
-    )
-
-    # 6b. On the raw grayscale image (for comparison)
-    harris_gray = cv2.cornerHarris(
-        gray.astype(np.float32) / 255.0,
-        blockSize=harris_block_size,
-        ksize=harris_ksize,
-        k=harris_k
-    )
-
-
-    # 7. Detect Harris Candidates (threshold + NMS)
-    corner_points = corner_detector.detect_corners(
-        harris_grid, harris_threshold, nms_radius
-    )
-    corner_points_gray = corner_detector.detect_corners(
-        harris_gray, harris_threshold, nms_radius
-    )
-
-    print(f"Harris candidates (grid mask): {len(corner_points)}")
-    print(f"Harris candidates (raw gray):  {len(corner_points_gray)}")
-
-
-    # 7b. Restrict candidates to the puzzle region (line mask -> region only)
-    region = make_region_mask(grid_image)
-    candidates = filter_by_region(corner_points, region)
-    print(f"Candidates inside region:      {len(candidates)}")
-
-
-    # 7c. Select the 4 outer corners among the Harris candidates
-    outer = select_outer_corners(candidates, gray.shape)
-
-    if outer is None:
-        print("Outer corners: NOT FOUND")
-        outer_original = None
-    else:
-        # Back to original-image coordinates (needed for the final output)
-        outer_original = [(x / scale, y / scale) for x, y in outer]
-        print("Outer corners (working size): "
-              + ", ".join(f"({x:.1f}, {y:.1f})" for x, y in outer))
-        print("Outer corners (original):     "
-              + ", ".join(f"({x:.1f}, {y:.1f})" for x, y in outer_original))
-
-
-    # 8. Draw Harris Candidates
-    harris_result = draw_points(gray, corner_points)
-    harris_result_gray = draw_points(gray, corner_points_gray)
-
-    # Region contour (green), surviving candidates (red), selected corners (blue)
-    selected_result = draw_points(gray, candidates, (0, 0, 255), 4)
-    region_contours, _ = cv2.findContours(
-        region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
-    cv2.drawContours(selected_result, region_contours, -1, (0, 255, 0), 2)
-    if outer is not None:
-        for x, y in outer:
-            cv2.circle(selected_result, (int(x), int(y)), 14, (255, 0, 0), 3)
-
-
-    # 9. Save Results
-    save_results(output_dir, {
-        "preprocessing/gray.png": gray,
-        "preprocessing/blurred.png": blurred,
-        "preprocessing/otsu.png": otsu,
-        "preprocessing/adaptive.png": adaptive,
-        "preprocessing/adaptive_inv.png": inverted,
-        "lines/horizontal_lines.png": horizontal_lines,
-        "lines/vertical_lines.png": vertical_lines,
-        "lines/combined_grid.png": grid_image,
-        "corners/harris_corners.png": harris_result,
-        "corners/harris_corners_gray_input.png": harris_result_gray,
-        "corners/selected.png": selected_result,
-        "lines/region_mask.png": region,
-    })
-
-    print(f"Results saved for: {image_name}")
-
-
-print("\nAll images processed.")
+    print(f"  -> {result['verdict']} ({result['runtime_s']} s)")
